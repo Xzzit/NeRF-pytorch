@@ -203,7 +203,7 @@ def get_rays(H, W, K, c2w):
                         -torch.ones_like(i)], -1)
 
     # Rotate ray directions from camera frame to the world frame
-    rays_d = dirs @ (torch.tensor(c2w[:3, :3]).t())
+    rays_d = dirs @ (c2w[:3, :3].t())
 
     # Translate camera frame's origin to the world frame. It is the origin of all rays.
     rays_o = c2w[:3, -1].expand(rays_d.shape)
