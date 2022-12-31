@@ -318,7 +318,7 @@ def create_nerf(args):
     render_kwargs_test['perturb'] = False
     render_kwargs_test['raw_noise_std'] = 0.
 
-    return render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer
+    return render_kwargs_train, render_kwargs_test, start, optimizer
 
 
 def render(H, W, K, chunk=1024 * 32, rays=None, c2w=None, ndc=True,
@@ -645,7 +645,7 @@ def train():
             file.write(open(args.config, 'r').read())
 
     # Create nerf model
-    render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer = create_nerf(args)  # render_kwargs_train: include NeRF MLP, encoding function...
+    render_kwargs_train, render_kwargs_test, start, optimizer = create_nerf(args)  # render_kwargs_train: include NeRF MLP, encoding function...
     global_step = start
 
     bds_dict = {
