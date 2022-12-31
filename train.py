@@ -687,13 +687,12 @@ def train():
     if use_batching:
         # For random ray batching
         print('get rays')
-        rays = np.stack([get_rays_np(H, W, K, p) for p in poses[:, :3, :4]], 0)  # [N, ro+rd, H, W, 3]
+        rays = np.stack([get_rays_np(H, W, K, p) for p in poses[:, :3, :4]], 0)  # [N, ro+rd(2), H, W, 3]
         print('done, concats')
-        rays_rgb = np.concatenate([rays, images[:, None]], 1)  # [N, ro+rd+rgb, H, W, 3]
-        print('!!!!!!!!!!', rays_rgb.shape)
-        rays_rgb = np.transpose(rays_rgb, [0, 2, 3, 1, 4])  # [N, H, W, ro+rd+rgb, 3]
+        rays_rgb = np.concatenate([rays, images[:, None]], 1)  # [N, ro+rd+rgb(3), H, W, 3]
+        rays_rgb = np.transpose(rays_rgb, [0, 2, 3, 1, 4])  # [N, H, W, ro+rd+rgb(3), 3]
         rays_rgb = np.stack([rays_rgb[i] for i in i_train], 0)  # train images only
-        rays_rgb = np.reshape(rays_rgb, [-1, 3, 3])  # [(N-1)*H*W, ro+rd+rgb, 3]
+        rays_rgb = np.reshape(rays_rgb, [-1, 3, 3])  # [(num_train)*H*W, ro+rd+rgb(3), 3]
         rays_rgb = rays_rgb.astype(np.float32)
         print('shuffle rays')
         np.random.shuffle(rays_rgb)
@@ -724,9 +723,9 @@ def train():
         # Sample random ray batch
         if use_batching:
             # Random over all images
-            batch = rays_rgb[i_batch:i_batch + N_rand]  # [B, 2+1, 3*?]
-            batch = torch.transpose(batch, 0, 1)
-            batch_rays, target_s = batch[:2], batch[2]
+            batch = rays_rgb[i_batch:i_batch + N_rand]  # [B, ro+rd+rgb(3), 3]
+            batch = torch.transpose(batch, 0, 1)  # [ro+rd+rgb(3), B, 3]
+            batch_rays, target_s = batch[:2], batch[2]  # [ro+rd(2), B, 3] [rgb(1), B, 3]
 
             i_batch += N_rand
             if i_batch >= rays_rgb.shape[0]:
