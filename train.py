@@ -751,13 +751,14 @@ def train():
                     coords = torch.stack(
                         torch.meshgrid(
                             torch.linspace(H // 2 - dH, H // 2 + dH - 1, 2 * dH),
-                            torch.linspace(W // 2 - dW, W // 2 + dW - 1, 2 * dW)
+                            torch.linspace(W // 2 - dW, W // 2 + dW - 1, 2 * dW),
+                            indexing='ij'
                         ), -1)
                     if i == start:
                         print(
                             f"[Config] Center cropping of size {2 * dH} x {2 * dW} is enabled until iter {args.precrop_iters}")
                 else:
-                    coords = torch.stack(torch.meshgrid(torch.linspace(0, H - 1, H), torch.linspace(0, W - 1, W)),
+                    coords = torch.stack(torch.meshgrid(torch.linspace(0, H - 1, H), torch.linspace(0, W - 1, W), indexing='ij'),
                                          -1)  # (H, W, 2)
 
                 coords = torch.reshape(coords, [-1, 2])  # (H * W, 2)
