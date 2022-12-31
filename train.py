@@ -645,7 +645,7 @@ def train():
             file.write(open(args.config, 'r').read())
 
     # Create nerf model
-    render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer = create_nerf(args)
+    render_kwargs_train, render_kwargs_test, start, grad_vars, optimizer = create_nerf(args)  # render_kwargs_train: include NeRF MLP, encoding function...
     global_step = start
 
     bds_dict = {
@@ -703,10 +703,10 @@ def train():
     # Move training data to GPU
     if use_batching:
         images = torch.Tensor(images).to(device)
-    poses = torch.Tensor(poses).to(device)
-    if use_batching:
         rays_rgb = torch.Tensor(rays_rgb).to(device)
+    poses = torch.Tensor(poses).to(device)
 
+    # Load total training steps
     N_iters = args.N_iters + 1
     print('Begin')
     print('TRAIN views are', i_train)
