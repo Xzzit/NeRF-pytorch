@@ -159,7 +159,6 @@ def render_rays(ray_batch, network_fn, network_query_fn, N_samples,
 
     pts = rays_o[..., None, :] + rays_d[..., None, :] * z_vals[..., :, None]  # [N_rays, N_samples, 3]
 
-    #     raw = run_network(pts)
     raw = network_query_fn(pts, viewdirs, network_fn)
     rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd,
                                                                  pytest=pytest)
@@ -176,7 +175,6 @@ def render_rays(ray_batch, network_fn, network_query_fn, N_samples,
                                                             None]  # [N_rays, N_samples + N_importance, 3]
 
         run_fn = network_fn if network_fine is None else network_fine
-        #         raw = run_network(pts, fn=run_fn)
         raw = network_query_fn(pts, viewdirs, run_fn)
 
         rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd,
@@ -200,7 +198,8 @@ def render_rays(ray_batch, network_fn, network_query_fn, N_samples,
 
 def run_network(inputs, viewdirs, fn, embed_fn, embeddirs_fn, netchunk=1024 * 64):
     """
-    [B, W * H, S, C] -> [B * W * H * S, C] -> [B * W * H * S, C'] -> [B * W * H * S, S, C''] -> [B, W * H, S, C'']
+    S: sampling points.
+    [B, S, C] -> [B * S, C] -> [B * S, C'] -> [B * S, C''] -> [B, S, C'']
     Flatten and positionally encode inputs and then apply network 'fn' to them
 
     :param inputs: Points in 3D space. [Batches(B), Width * Height(W*H), Sampling_Num(S), Coordinates_Dim(C)]
@@ -212,11 +211,10 @@ def run_network(inputs, viewdirs, fn, embed_fn, embeddirs_fn, netchunk=1024 * 64
 
     :return:
     """
-
-    # Flatten the input tensor from [B, W * H, S, C] to [B * W * H * S, C]
+    # Flatten the input tensor from [B, S, C] to [B * S, C]
     inputs_flat = torch.reshape(inputs, [-1, inputs.shape[-1]])
 
-    # Positional Embedding. Shape [B * W * H * S, C] to [B * W * H * S, C']
+    # Positional Embedding. Shape [B * S, C] to [B * S, C']
     embedded = embed_fn(inputs_flat)
 
     # Include view directions if available
@@ -226,10 +224,10 @@ def run_network(inputs, viewdirs, fn, embed_fn, embeddirs_fn, netchunk=1024 * 64
         embedded_dirs = embeddirs_fn(input_dirs_flat)
         embedded = torch.cat([embedded, embedded_dirs], -1)
 
-    # Input flattened data into MPL. Shape: [B * W * H * S, C'] -> [B * W * H * S, C'']
+    # Input flattened data into MPL. Shape: [B * S, C'] -> [B * S, C'']
     outputs_flat = batchify(fn, netchunk)(embedded)
 
-    # Reverse the shape from [B * W * H * S, C''] to [B, W * H, S, C'']
+    # Reverse the shape from [B * S, C''] to [B, S, C'']
     outputs = torch.reshape(outputs_flat, list(inputs.shape[:-1]) + [outputs_flat.shape[-1]])
     return outputs
 
@@ -329,10 +327,10 @@ def render(H, W, K, chunk=1024 * 32, rays=None, c2w=None, ndc=True,
     Args:
       H: int. Height of image in pixels.
       W: int. Width of image in pixels.
-      focal: float. Focal length of pinhole camera.
+      K: array. Focal length of pinhole camera, H//2 and W//2.
       chunk: int. Maximum number of rays to process simultaneously. Used to
         control maximum memory usage. Does not affect final results.
-      rays: array of shape [2, batch_size, 3]. Ray origin and direction for
+      rays: array of shape [ro+rd(2), batch_size, 3]. Ray origin and direction for
         each example in batch.
       c2w: array of shape [3, 4]. Camera-to-world transformation matrix.
       ndc: bool. If True, represent ray origin, direction in NDC coordinates.
@@ -349,11 +347,12 @@ def render(H, W, K, chunk=1024 * 32, rays=None, c2w=None, ndc=True,
     """
     if c2w is not None:
         # special case to render full image
-        rays_o, rays_d = get_rays(H, W, K, c2w)
+        rays_o, rays_d = get_rays(H, W, K, c2w)  # [H, W, 3], [H, W, 3]
     else:
         # use provided ray batch
-        rays_o, rays_d = rays
+        rays_o, rays_d = rays  # [B, 3], [B, 3]
 
+    # View dependency
     if use_viewdirs:
         # provide ray directions as input
         viewdirs = rays_d
@@ -363,7 +362,7 @@ def render(H, W, K, chunk=1024 * 32, rays=None, c2w=None, ndc=True,
         viewdirs = viewdirs / torch.norm(viewdirs, dim=-1, keepdim=True)
         viewdirs = torch.reshape(viewdirs, [-1, 3]).float()
 
-    sh = rays_d.shape  # [..., 3]
+    sh = rays_d.shape  # [B, 3]
     if ndc:
         # for forward facing scenes
         rays_o, rays_d = ndc_rays(H, W, K[0][0], 1., rays_o, rays_d)
@@ -372,10 +371,10 @@ def render(H, W, K, chunk=1024 * 32, rays=None, c2w=None, ndc=True,
     rays_o = torch.reshape(rays_o, [-1, 3]).float()
     rays_d = torch.reshape(rays_d, [-1, 3]).float()
 
-    near, far = near * torch.ones_like(rays_d[..., :1]), far * torch.ones_like(rays_d[..., :1])
-    rays = torch.cat([rays_o, rays_d, near, far], -1)
+    near, far = near * torch.ones_like(rays_d[..., :1]), far * torch.ones_like(rays_d[..., :1])  # [B, 1], [B, 1]
+    rays = torch.cat([rays_o, rays_d, near, far], -1)  # [B, D_rays_o + D_rays_d + D_near + D_far(3+3+1+1=8)]
     if use_viewdirs:
-        rays = torch.cat([rays, viewdirs], -1)
+        rays = torch.cat([rays, viewdirs], -1)  # [B, D_rays_o + D_rays_d + D_near + D_far + D_viewdirs(3+3+1+1+3=11)]
 
     # Render and reshape
     all_ret = batchify_rays(rays, chunk, **kwargs)
@@ -733,7 +732,7 @@ def train():
                 rand_idx = torch.randperm(rays_rgb.shape[0])
                 rays_rgb = rays_rgb[rand_idx]
                 i_batch = 0
-
+ 
         else:
             # Random from one image
             img_i = np.random.choice(i_train)
