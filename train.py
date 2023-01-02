@@ -199,7 +199,7 @@ def render_rays(ray_batch, network_fn, network_query_fn, N_samples,
 def run_network(inputs, viewdirs, fn, embed_fn, embeddirs_fn, netchunk=1024 * 64):
     """
     S: sampling points.
-    [B, S, C] -> [B * S, C] -> [B * S, C'] -> [B * S, C''] -> [B, S, C'']
+    inputs: [B, S, C] -> flatten: [B * S, C] -> poem: [B * S, C'] -> nerf: [B * S, C''] -> resize: [B, S, C'']
     Flatten and positionally encode inputs and then apply network 'fn' to them
 
     :param inputs: Points in 3D space. [Batches(B), Width * Height(W*H), Sampling_Num(S), Coordinates_Dim(C)]
