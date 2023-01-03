@@ -275,14 +275,15 @@ def create_nerf(args):
     start = 0
     basedir = args.basedir
     expname = args.expname
-
+    
     if args.ft_path is not None and args.ft_path != 'None':
         ckpts = [args.ft_path]
+        print('Found ckpts', ckpts)
     else:
         ckpts = [os.path.join(basedir, expname, f) for f in sorted(os.listdir(os.path.join(basedir, expname))) if
                  'tar' in f]
+        print('Found ckpts', ckpts)
 
-    print('Found ckpts', ckpts)
     if len(ckpts) > 0 and not args.no_reload:
         ckpt_path = ckpts[-1]
         print('Reloading from', ckpt_path)
