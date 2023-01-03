@@ -9,7 +9,7 @@ use_viewdirs = True
 white_bkgd = True
 lrate_decay = 500
 
-N_samples = 64
+N_pts_coarse = 64
 N_pts_fine = 128
 N_rand = 1024
 N_iters = 20
