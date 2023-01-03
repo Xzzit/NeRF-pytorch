@@ -63,11 +63,11 @@ def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0, white_bkgd=False, pytest=F
     raw2alpha = lambda raw, dists, act_fn=F.relu: 1. - torch.exp(-act_fn(raw) * dists)
 
     dists = z_vals[..., 1:] - z_vals[..., :-1]
-    dists = torch.cat([dists, torch.Tensor([1e10]).expand(dists[..., :1].shape)], -1)  # [N_rays, N_samples]
+    dists = torch.cat([dists, torch.Tensor([1e10]).expand(dists[..., :1].shape)], -1)  # [N_rays, N_pts_coarse]
 
     dists = dists * torch.norm(rays_d[..., None, :], dim=-1)
 
-    rgb = torch.sigmoid(raw[..., :3])  # [N_rays, N_samples, 3]
+    rgb = torch.sigmoid(raw[..., :3])  # [N_rays, N_pts_coarse, 3]
     noise = 0.
     if raw_noise_std > 0.:
         noise = torch.randn(raw[..., 3].shape) * raw_noise_std
@@ -78,7 +78,7 @@ def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0, white_bkgd=False, pytest=F
             noise = np.random.rand(*list(raw[..., 3].shape)) * raw_noise_std
             noise = torch.Tensor(noise)
 
-    alpha = raw2alpha(raw[..., 3] + noise, dists)  # [N_rays, N_samples]
+    alpha = raw2alpha(raw[..., 3] + noise, dists)  # [N_rays, N_pts_coarse]
     # weights = alpha * tf.math.cumprod(1.-alpha + 1e-10, -1, exclusive=True)
     weights = alpha * torch.cumprod(torch.cat([torch.ones((alpha.shape[0], 1)), 1. - alpha + 1e-10], -1), -1)[:, :-1]
     rgb_map = torch.sum(weights[..., None] * rgb, -2)  # [N_rays, 3]
@@ -93,8 +93,8 @@ def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0, white_bkgd=False, pytest=F
     return rgb_map, disp_map, acc_map, weights, depth_map
 
 
-def render_rays(ray_batch, network_fn, network_query_fn, N_samples,
-                retraw=False, lindisp=False, perturb=0., N_importance=0,
+def render_rays(ray_batch, network_fn, network_query_fn, N_pts_coarse,
+                retraw=False, lindisp=False, perturb=0., N_pts_fine=0,
                 network_fine=None, white_bkgd=False, raw_noise_std=0.,
                 verbose=False, pytest=False):
     """Volumetric rendering.
@@ -105,12 +105,12 @@ def render_rays(ray_batch, network_fn, network_query_fn, N_samples,
       network_fn: function. Model for predicting RGB and density at each point
         in space.
       network_query_fn: function used for passing queries to network_fn.
-      N_samples: int. Number of different times to sample along each ray.
+      N_pts_coarse: int. Number of different times to sample along each ray.
       retraw: bool. If True, include model's raw, unprocessed predictions.
       lindisp: bool. If True, sample linearly in inverse depth rather than in depth.
       perturb: float, 0 or 1. If non-zero, each ray is sampled at stratified
         random points in time.
-      N_importance: int. Number of additional times to sample along each ray.
+      N_pts_fine: int. Number of additional times to sample along each ray.
         These samples are only passed to network_fine.
       network_fine: "fine" network with same spec as network_fn.
       white_bkgd: bool. If True, assume a white background.
@@ -127,19 +127,21 @@ def render_rays(ray_batch, network_fn, network_query_fn, N_samples,
       z_std: [num_rays]. Standard deviation of distances along ray for each
         sample.
     """
+
+    # Unpack rays_o(3), rays_d(3), near(1), far(1), viewdirs(3) in ray_batch
     N_rays = ray_batch.shape[0]
-    rays_o, rays_d = ray_batch[:, 0:3], ray_batch[:, 3:6]  # [N_rays, 3] each
+    rays_o, rays_d = ray_batch[:, 0:3], ray_batch[:, 3:6]  # [B, 3] each
     viewdirs = ray_batch[:, -3:] if ray_batch.shape[-1] > 8 else None
     bounds = torch.reshape(ray_batch[..., 6:8], [-1, 1, 2])
-    near, far = bounds[..., 0], bounds[..., 1]  # [-1,1]
+    near, far = bounds[..., 0], bounds[..., 1]  # [B, 1]
 
-    t_vals = torch.linspace(0., 1., steps=N_samples)
+    t_vals = torch.linspace(0., 1., steps=N_pts_coarse)
     if not lindisp:
         z_vals = near * (1. - t_vals) + far * (t_vals)
     else:
         z_vals = 1. / (1. / near * (1. - t_vals) + 1. / far * (t_vals))
 
-    z_vals = z_vals.expand([N_rays, N_samples])
+    z_vals = z_vals.expand([N_rays, N_pts_coarse])
 
     if perturb > 0.:
         # get intervals between samples
@@ -157,22 +159,22 @@ def render_rays(ray_batch, network_fn, network_query_fn, N_samples,
 
         z_vals = lower + (upper - lower) * t_rand
 
-    pts = rays_o[..., None, :] + rays_d[..., None, :] * z_vals[..., :, None]  # [N_rays, N_samples, 3]
+    pts = rays_o[..., None, :] + rays_d[..., None, :] * z_vals[..., :, None]  # [N_rays, N_pts_coarse, 3]
 
     raw = network_query_fn(pts, viewdirs, network_fn)
     rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd,
                                                                  pytest=pytest)
 
-    if N_importance > 0:
+    if N_pts_fine > 0:
         rgb_map_0, disp_map_0, acc_map_0 = rgb_map, disp_map, acc_map
 
         z_vals_mid = .5 * (z_vals[..., 1:] + z_vals[..., :-1])
-        z_samples = sample_pdf(z_vals_mid, weights[..., 1:-1], N_importance, det=(perturb == 0.), pytest=pytest)
+        z_samples = sample_pdf(z_vals_mid, weights[..., 1:-1], N_pts_fine, det=(perturb == 0.), pytest=pytest)
         z_samples = z_samples.detach()
 
         z_vals, _ = torch.sort(torch.cat([z_vals, z_samples], -1), -1)
         pts = rays_o[..., None, :] + rays_d[..., None, :] * z_vals[..., :,
-                                                            None]  # [N_rays, N_samples + N_importance, 3]
+                                                            None]  # [N_rays, N_pts_coarse + N_pts_fine, 3]
 
         run_fn = network_fn if network_fine is None else network_fine
         raw = network_query_fn(pts, viewdirs, run_fn)
@@ -183,7 +185,7 @@ def render_rays(ray_batch, network_fn, network_query_fn, N_samples,
     ret = {'rgb_map': rgb_map, 'disp_map': disp_map, 'acc_map': acc_map}
     if retraw:
         ret['raw'] = raw
-    if N_importance > 0:
+    if N_pts_fine > 0:
         ret['rgb0'] = rgb_map_0
         ret['disp0'] = disp_map_0
         ret['acc0'] = acc_map_0
@@ -243,7 +245,7 @@ def create_nerf(args):
     if args.use_viewdirs:
         embeddirs_fn, input_ch_views = get_embedder(args.multires_views, args.i_embed)
 
-    output_ch = 5 if args.N_importance > 0 else 4
+    output_ch = 5 if args.N_pts_fine > 0 else 4
     skips = [4]
 
     # Initialize coarse NeRF model
@@ -254,7 +256,7 @@ def create_nerf(args):
 
     # Initialize fine NeRF model
     model_fine = None
-    if args.N_importance > 0:
+    if args.N_pts_fine > 0:
         model_fine = NeRF(D=args.netdepth_fine, W=args.netwidth_fine,
                           input_ch=input_ch, output_ch=output_ch, skips=skips,
                           input_ch_views=input_ch_views, use_viewdirs=args.use_viewdirs).to(device)
@@ -297,9 +299,9 @@ def create_nerf(args):
     render_kwargs_train = {
         'network_query_fn': network_query_fn,
         'perturb': args.perturb,
-        'N_importance': args.N_importance,
+        'N_pts_fine': args.N_pts_fine,
         'network_fine': model_fine,
-        'N_samples': args.N_samples,
+        'N_pts_coarse': args.N_pts_coarse,
         'network_fn': model,
         'use_viewdirs': args.use_viewdirs,
         'white_bkgd': args.white_bkgd,
@@ -468,9 +470,9 @@ def config_parser():
                         help='specific weights npy file to reload for coarse network')
 
     # rendering options
-    parser.add_argument("--N_samples", type=int, default=64,
+    parser.add_argument("--N_pts_coarse", type=int, default=64,
                         help='number of coarse samples per ray')
-    parser.add_argument("--N_importance", type=int, default=0,
+    parser.add_argument("--N_pts_fine", type=int, default=0,
                         help='number of additional fine samples per ray')
     parser.add_argument("--perturb", type=float, default=1.,
                         help='set to 0. for no jitter, 1. for jitter')
