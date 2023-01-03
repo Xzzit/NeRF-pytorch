@@ -275,13 +275,14 @@ def create_nerf(args):
     start = 0
     basedir = args.basedir
     expname = args.expname
-    
+
     if args.ft_path is not None and args.ft_path != 'None':
         ckpts = [args.ft_path]
-        print('Found ckpts', ckpts)
     else:
         ckpts = [os.path.join(basedir, expname, f) for f in sorted(os.listdir(os.path.join(basedir, expname))) if
                  'tar' in f]
+
+    if ckpts != []:
         print('Found ckpts', ckpts)
 
     if len(ckpts) > 0 and not args.no_reload:
@@ -311,7 +312,6 @@ def create_nerf(args):
 
     # NDC only good for LLFF-style forward facing data
     if args.dataset_type != 'llff' or args.no_ndc:
-        print('Not ndc!')
         render_kwargs_train['ndc'] = False
         render_kwargs_train['lindisp'] = args.lindisp
 
@@ -688,18 +688,14 @@ def train():
     use_batching = not args.no_batching
     if use_batching:
         # For random ray batching
-        print('get rays')
         rays = np.stack([get_rays_np(H, W, K, p) for p in poses[:, :3, :4]], 0)  # [N, ro+rd(2), H, W, 3]
-        print('done, concats')
         rays_rgb = np.concatenate([rays, images[:, None, ...]], 1)  # [N, ro+rd+rgb(3), H, W, 3]
         rays_rgb = np.transpose(rays_rgb, [0, 2, 3, 1, 4])  # [N, H, W, ro+rd+rgb(3), 3]
         rays_rgb = np.stack([rays_rgb[i] for i in i_train], 0)  # train images only
         rays_rgb = np.reshape(rays_rgb, [-1, 3, 3])  # [(num_train)*H*W, ro+rd+rgb(3), 3]
         rays_rgb = rays_rgb.astype(np.float32)
-        print('shuffle rays')
         np.random.shuffle(rays_rgb)
 
-        print('done')
         i_batch = 0
 
     # Move training data to GPU
@@ -710,10 +706,9 @@ def train():
 
     # Load total training steps
     N_iters = args.N_iters + 1
-    print('Begin')
-    print('TRAIN views are', i_train)
-    print('TEST views are', i_test)
-    print('VAL views are', i_val)
+    print('# TRAIN views: ', len(i_train))
+    print('# TEST views: ', len(i_test))
+    print('# VAL views: ', len(i_val))
 
     # Summary writers
     # writer = SummaryWriter(os.path.join(basedir, 'summaries', expname))
