@@ -152,7 +152,7 @@ def render_rays(ray_batch, network_fn, network_query_fn, N_pts_coarse,
     return ret
 
 
-def batchify_rays(rays_flat, chunk=1024 * 32, **kwargs):
+def batchify(rays_flat, chunk=1024 * 32, **kwargs):
     """Render rays in smaller minibatches to avoid OOM.
     """
     all_ret = {}
@@ -225,7 +225,7 @@ def render(H, W, K, chunk=1024 * 32, rays=None, c2w=None, ndc=True,
         rays = torch.cat([rays, viewdirs], -1)  # [B, D_rays_o + D_rays_d + D_near + D_far + D_viewdirs(3+3+1+1+3=11)]
 
     # Render and reshape
-    all_ret = batchify_rays(rays, chunk, **kwargs)
+    all_ret = batchify(rays, chunk, **kwargs)
     for k in all_ret:
         k_sh = list(sh[:-1]) + list(all_ret[k].shape[1:])
         all_ret[k] = torch.reshape(all_ret[k], k_sh)
