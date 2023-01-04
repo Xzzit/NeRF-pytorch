@@ -95,8 +95,6 @@ def render_rays(ray_batch, network_fn, network_query_fn, N_pts_coarse,
     else:
         z_vals = 1. / (1. / near * (1. - t_vals) + 1. / far * (t_vals))
 
-    z_vals = z_vals.expand([N_rays, N_pts_coarse])
-
     if perturb > 0.:
         # get intervals between samples
         mids = .5 * (z_vals[..., 1:] + z_vals[..., :-1])
