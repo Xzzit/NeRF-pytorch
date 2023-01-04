@@ -397,8 +397,7 @@ def train():
 
         #####  Core optimization loop  #####
         rgb, disp, acc, extras = render(H, W, K, chunk=args.chunk, rays=batch_rays,
-                                        verbose=i < 10, retraw=True,
-                                        **render_kwargs_train)
+                                        retraw=True, **render_kwargs_train)
 
         optimizer.zero_grad()
         img_loss = img2mse(rgb, target_s)
