@@ -19,7 +19,7 @@ def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0, white_bkgd=False, pytest=F
     dists = z_vals[..., 1:] - z_vals[..., :-1]
     dists = torch.cat([dists, torch.Tensor([1e10]).expand(dists[..., :1].shape)], -1)  # [N_rays, N_pts_coarse]
 
-    dists = dists * torch.norm(rays_d[..., None, :], dim=-1)
+    dists = dists * torch.linalg.norm(rays_d[..., None, :], dim=-1)
 
     rgb = torch.sigmoid(raw[..., :3])  # [N_rays, N_pts_coarse, 3]
     noise = 0.
@@ -207,7 +207,7 @@ def render(H, W, K, chunk=1024 * 32, rays=None, c2w=None, ndc=True,
         if c2w_staticcam is not None:
             # special case to visualize effect of viewdirs
             rays_o, rays_d = get_rays(H, W, K, c2w_staticcam)
-        viewdirs = viewdirs / torch.norm(viewdirs, dim=-1, keepdim=True)
+        viewdirs = viewdirs / torch.linalg.norm(viewdirs, dim=-1, keepdim=True)
         viewdirs = torch.reshape(viewdirs, [-1, 3]).float()
 
     sh = rays_d.shape  # [B, 3]
