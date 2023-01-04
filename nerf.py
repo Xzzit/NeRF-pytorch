@@ -5,11 +5,81 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
-from utils import get_embedder
-
 
 # Set device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+# Positional encoding (section 5.1)
+class Embedder:
+    """
+    Positional Encoding
+
+    :param input_dims: the dimension of input data. Default: 3 (x, y, z).
+    :param include_input: whether include input data into output. Default: True.
+    :param max_freq_log2:  the maximum frequency.
+    :param num_freqs: number of sampling frequency point.
+    :param log_sampling: sampling through [0, max_freq], then 2^[sampling point]. Default: True.
+    :param periodic_fns: periodic functions used for positional encoding.
+    """
+
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+        self.create_embedding_fn()
+
+    def create_embedding_fn(self):
+        embed_fns = []
+        d = self.kwargs['input_dims']
+        out_dim = 0
+        if self.kwargs['include_input']:
+            embed_fns.append(lambda x: x)
+            out_dim += d
+
+        max_freq = self.kwargs['max_freq_log2']
+        N_freqs = self.kwargs['num_freqs']
+
+        if self.kwargs['log_sampling']:
+            freq_bands = 2. ** torch.linspace(0., max_freq, steps=N_freqs)
+        else:
+            freq_bands = torch.linspace(2. ** 0., 2. ** max_freq, steps=N_freqs)
+
+        for freq in freq_bands:
+            for p_fn in self.kwargs['periodic_fns']:
+                embed_fns.append(lambda x, p_fn=p_fn, freq=freq: p_fn(x * freq))
+                out_dim += d
+
+        self.embed_fns = embed_fns  # [sin(2^0)(), ..., cos(2^max_freq)()], shape: [B*H*W, 6*(max_freq-1)+3]
+        self.out_dim = out_dim  # 6*(max_freq-1)+3
+
+    def embed(self, inputs):
+        return torch.cat([fn(inputs) for fn in self.embed_fns], -1)
+
+
+def get_embedder(multires, i=0):
+    '''
+
+    :param multires: number of frequency
+    :param i: -1 for not positional embedding
+
+    :return:
+        embed:
+        embedder_obj.out_dim: channel after positional embedding
+    '''
+    if i == -1:
+        return nn.Identity(), 3
+
+    embed_kwargs = {
+        'include_input': True,
+        'input_dims': 3,
+        'max_freq_log2': multires - 1,
+        'num_freqs': multires,
+        'log_sampling': True,
+        'periodic_fns': [torch.sin, torch.cos],
+    }
+
+    embedder_obj = Embedder(**embed_kwargs)
+    embed = lambda x, eo=embedder_obj: eo.embed(x)
+    return embed, embedder_obj.out_dim
 
 
 # Model architecture
