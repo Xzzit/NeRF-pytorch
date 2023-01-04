@@ -83,7 +83,6 @@ def render_rays(ray_batch, network_fn, network_query_fn, N_pts_coarse,
     """
 
     # Unpack rays_o(3), rays_d(3), near(1), far(1), viewdirs(3) in ray_batch
-    N_rays = ray_batch.shape[0]
     rays_o, rays_d = ray_batch[:, 0:3], ray_batch[:, 3:6]  # [B, 3] each
     viewdirs = ray_batch[:, -3:] if ray_batch.shape[-1] > 8 else None
     bounds = torch.reshape(ray_batch[..., 6:8], [-1, 1, 2])
