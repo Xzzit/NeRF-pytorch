@@ -88,9 +88,10 @@ def render_rays(ray_batch, network_fn, network_query_fn, N_pts_coarse,
     bounds = torch.reshape(ray_batch[..., 6:8], [-1, 1, 2])
     near, far = bounds[..., 0], bounds[..., 1]  # [B, 1]
 
-    t_vals = torch.linspace(0., 1., steps=N_pts_coarse)
+    # Create sampling distance over rays
+    t_vals = torch.linspace(0., 1., steps=N_pts_coarse)  # [N_pts_coarse]
     if not lindisp:
-        z_vals = near * (1. - t_vals) + far * (t_vals)
+        z_vals = near * (1. - t_vals) + far * (t_vals)  # [B, N_pts_coarse]
     else:
         z_vals = 1. / (1. / near * (1. - t_vals) + 1. / far * (t_vals))
 
@@ -110,12 +111,17 @@ def render_rays(ray_batch, network_fn, network_query_fn, N_pts_coarse,
 
         z_vals = lower + (upper - lower) * t_rand
 
-    pts = rays_o[..., None, :] + rays_d[..., None, :] * z_vals[..., :, None]  # [N_rays, N_pts_coarse, 3]
+    # Create sampling points: [B, 1, 3] + [B, 1, 3] * [B, N_pts_coarse, 1]
+    pts = rays_o[..., None, :] + rays_d[..., None, :] * z_vals[..., :, None]  # [B, N_pts_coarse, 3]
 
-    raw = network_query_fn(pts, viewdirs, network_fn)
+    # Estimate color and density at each point using NeRF
+    raw = network_query_fn(pts, viewdirs, network_fn)  # [B, N_pts_coarse, 4]
+
+    # Volume rendering
     rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd,
                                                                  pytest=pytest)
 
+    # Coarse to fine strategy
     if N_pts_fine > 0:
         rgb_map_0, disp_map_0, acc_map_0 = rgb_map, disp_map, acc_map
 
@@ -125,7 +131,7 @@ def render_rays(ray_batch, network_fn, network_query_fn, N_pts_coarse,
 
         z_vals, _ = torch.sort(torch.cat([z_vals, z_samples], -1), -1)
         pts = rays_o[..., None, :] + rays_d[..., None, :] * z_vals[..., :,
-                                                            None]  # [N_rays, N_pts_coarse + N_pts_fine, 3]
+                                                            None]  # [B, N_pts_coarse + N_pts_fine, 3]
 
         run_fn = network_fn if network_fine is None else network_fine
         raw = network_query_fn(pts, viewdirs, run_fn)
@@ -133,6 +139,7 @@ def render_rays(ray_batch, network_fn, network_query_fn, N_pts_coarse,
         rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd,
                                                                      pytest=pytest)
 
+    # Pack output
     ret = {'rgb_map': rgb_map, 'disp_map': disp_map, 'acc_map': acc_map}
     if retraw:
         ret['raw'] = raw
@@ -140,7 +147,7 @@ def render_rays(ray_batch, network_fn, network_query_fn, N_pts_coarse,
         ret['rgb0'] = rgb_map_0
         ret['disp0'] = disp_map_0
         ret['acc0'] = acc_map_0
-        ret['z_std'] = torch.std(z_samples, dim=-1, unbiased=False)  # [N_rays]
+        ret['z_std'] = torch.std(z_samples, dim=-1, unbiased=False)  # [B]
 
     for k in ret:
         if (torch.isnan(ret[k]).any() or torch.isinf(ret[k]).any()) and verbose:
