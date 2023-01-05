@@ -53,33 +53,32 @@ def render_rays(ray_batch, network_fn, network_query_fn, N_pts_coarse,
                 verbose=False, pytest=False):
     """Volumetric rendering.
     Args:
-      ray_batch: array of shape [batch_size, ...]. All information necessary
-        for sampling along a ray, including: ray origin, ray direction, min
-        dist, max dist, and unit-magnitude viewing direction.
-      network_fn: function. Model for predicting RGB and density at each point
-        in space.
-      network_query_fn: function used for passing queries to network_fn.
-      N_pts_coarse: int. Number of different times to sample along each ray.
-      retraw: bool. If True, include model's raw, unprocessed predictions.
-      lindisp: bool. If True, sample linearly in inverse depth rather than in depth.
-      perturb: float, 0 or 1. If non-zero, each ray is sampled at stratified
-        random points in time.
-      N_pts_fine: int. Number of additional times to sample along each ray.
-        These samples are only passed to network_fine.
-      network_fine: "fine" network with same spec as network_fn.
-      white_bkgd: bool. If True, assume a white background.
-      raw_noise_std: ...
-      verbose: bool. If True, print more debugging info.
+    render_kwargs_xx: go to nerf.py --> create_nerf() --> render_kwargs_train for reference
+        1. network_query_fn: function used for passing queries to network_fn.
+        2. network_fn: function. Model for predicting RGB and density at each point in space.
+        3. N_pts_coarse: int. Number of different times to sample along each ray.
+        4. network_fine: "fine" network with same spec as network_fn.
+        5. N_pts_fine: int. Number of additional times to sample along each ray.
+            These samples are only passed to network_fine.
+        6. perturb: float, 0 or 1. If non-zero, each ray is sampled at stratified
+            random points in time.
+        7. white_bkgd: bool. If True, assume a white background.
+        8. raw_noise_std: ...
+    ray_batch: array of shape [batch_size, ...]. All information necessary
+        for sampling along a ray, including: ray origin, ray direction, near, far, view direction.
+    retraw: bool. If True, include model's raw, unprocessed predictions.
+    lindisp: bool. If True, sample linearly in inverse depth rather than in depth.
+    verbose: bool. If True, print more debugging info.
+
     Returns:
-      rgb_map: [num_rays, 3]. Estimated RGB color of a ray. Comes from fine model.
-      disp_map: [num_rays]. Disparity map. 1 / depth.
-      acc_map: [num_rays]. Accumulated opacity along each ray. Comes from fine model.
-      raw: [num_rays, num_samples, 4]. Raw predictions from model.
-      rgb0: See rgb_map. Output for coarse model.
-      disp0: See disp_map. Output for coarse model.
-      acc0: See acc_map. Output for coarse model.
-      z_std: [num_rays]. Standard deviation of distances along ray for each
-        sample.
+    rgb_map: [num_rays, 3]. Estimated RGB color of a ray. Comes from fine model.
+    disp_map: [num_rays]. Disparity map. 1 / depth.
+    acc_map: [num_rays]. Accumulated opacity along each ray. Comes from fine model.
+    raw: [num_rays, num_samples, 4]. Raw predictions from model.
+    rgb0: See rgb_map. Output for coarse model.
+    disp0: See disp_map. Output for coarse model.
+    acc0: See acc_map. Output for coarse model.
+    z_std: [num_rays]. Standard deviation of distances along ray for each sample.
     """
 
     # Unpack rays_o(3), rays_d(3), near(1), far(1), viewdirs(3) in ray_batch
@@ -134,7 +133,7 @@ def render_rays(ray_batch, network_fn, network_query_fn, N_pts_coarse,
                                                             None]  # [B, N_pts_coarse + N_pts_fine, 3]
 
         run_fn = network_fn if network_fine is None else network_fine
-        raw = network_query_fn(pts, viewdirs, run_fn)
+        raw = network_query_fn(pts, viewdirs, run_fn)  # [B, N_pts_coarse + N_pts_fine, 4]
 
         rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd,
                                                                      pytest=pytest)
