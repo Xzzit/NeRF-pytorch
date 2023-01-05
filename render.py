@@ -232,7 +232,6 @@ def render(H, W, K, chunk=1024 * 32, rays=None, c2w=None, ndc=True,
         rays = torch.cat([rays, viewdirs], -1)  # [B, D_rays_o + D_rays_d + D_near + D_far + D_viewdirs(3+3+1+1+3=11)]
 
     # Render and reshape
-    print('!!!!', kwargs.keys())
     all_ret = batchify(rays, chunk, **kwargs)
     for k in all_ret:
         k_sh = list(sh[:-1]) + list(all_ret[k].shape[1:])
