@@ -1,7 +1,7 @@
 from utils import *
 
 
-def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0, white_bkgd=False, pytest=False):
+def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0, white_bkgd=False):
     """Transforms model's predictions to semantically meaningful values.
     Args:
         raw: [num_rays, num_samples along ray, 4]. Prediction from model.
@@ -26,12 +26,6 @@ def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0, white_bkgd=False, pytest=F
     if raw_noise_std > 0.:
         noise = torch.randn(raw[..., 3].shape) * raw_noise_std
 
-        # Overwrite randomly sampled data if pytest
-        if pytest:
-            np.random.seed(0)
-            noise = np.random.rand(*list(raw[..., 3].shape)) * raw_noise_std
-            noise = torch.Tensor(noise)
-
     alpha = raw2alpha(raw[..., 3] + noise, dists)  # [N_rays, N_pts_coarse]
     # weights = alpha * tf.math.cumprod(1.-alpha + 1e-10, -1, exclusive=True)
     weights = alpha * torch.cumprod(torch.cat([torch.ones((alpha.shape[0], 1)), 1. - alpha + 1e-10], -1), -1)[:, :-1]
@@ -52,7 +46,7 @@ def render_rays(ray_batch, network_query_fn,
                 network_fine=None, N_pts_fine=0,
                 retraw=False, lindisp=False, perturb=0.,
                 white_bkgd=False, raw_noise_std=0.,
-                verbose=False, pytest=False):
+                verbose=False):
     """Volumetric rendering.
     Args:
     render_kwargs_xx: go to nerf.py --> create_nerf() --> render_kwargs_train for reference
@@ -104,12 +98,6 @@ def render_rays(ray_batch, network_query_fn,
         # stratified samples in those intervals
         t_rand = torch.rand(z_vals.shape)
 
-        # Pytest, overwrite u with numpy's fixed random numbers
-        if pytest:
-            np.random.seed(0)
-            t_rand = np.random.rand(*list(z_vals.shape))
-            t_rand = torch.Tensor(t_rand)
-
         z_vals = lower + (upper - lower) * t_rand
 
     # Create sampling points: [B, 1, 3] + [B, 1, 3] * [B, N_pts_coarse, 1]
@@ -119,15 +107,14 @@ def render_rays(ray_batch, network_query_fn,
     raw = network_query_fn(pts, viewdirs, network_fn)  # [B, N_pts_coarse, 4]
 
     # Volume rendering
-    rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd,
-                                                                 pytest=pytest)
+    rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd)
 
     # Coarse to fine strategy
     if N_pts_fine > 0:
         rgb_map_0, disp_map_0, acc_map_0 = rgb_map, disp_map, acc_map
 
         z_vals_mid = .5 * (z_vals[..., 1:] + z_vals[..., :-1])
-        z_samples = sample_pdf(z_vals_mid, weights[..., 1:-1], N_pts_fine, det=(perturb == 0.), pytest=pytest)
+        z_samples = sample_pdf(z_vals_mid, weights[..., 1:-1], N_pts_fine, det=(perturb == 0.))
         z_samples = z_samples.detach()
 
         z_vals, _ = torch.sort(torch.cat([z_vals, z_samples], -1), -1)
@@ -137,8 +124,7 @@ def render_rays(ray_batch, network_query_fn,
         run_fn = network_fn if network_fine is None else network_fine
         raw = network_query_fn(pts, viewdirs, run_fn)  # [B, N_pts_coarse + N_pts_fine, 4]
 
-        rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd,
-                                                                     pytest=pytest)
+        rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd)
 
     # Pack output
     ret = {'rgb_map': rgb_map, 'disp_map': disp_map, 'acc_map': acc_map}

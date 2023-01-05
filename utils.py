@@ -87,7 +87,7 @@ def ndc_rays(H, W, focal, near, rays_o, rays_d):
 
 
 # Hierarchical sampling (section 5.2)
-def sample_pdf(bins, weights, N_pts_coarse, det=False, pytest=False):
+def sample_pdf(bins, weights, N_pts_coarse, det=False):
     # Get pdf
     weights = weights + 1e-5  # prevent nans
     pdf = weights / torch.sum(weights, -1, keepdim=True)
@@ -100,17 +100,6 @@ def sample_pdf(bins, weights, N_pts_coarse, det=False, pytest=False):
         u = u.expand(list(cdf.shape[:-1]) + [N_pts_coarse])
     else:
         u = torch.rand(list(cdf.shape[:-1]) + [N_pts_coarse])
-
-    # Pytest, overwrite u with numpy's fixed random numbers
-    if pytest:
-        np.random.seed(0)
-        new_shape = list(cdf.shape[:-1]) + [N_pts_coarse]
-        if det:
-            u = np.linspace(0., 1., N_pts_coarse)
-            u = np.broadcast_to(u, new_shape)
-        else:
-            u = np.random.rand(*new_shape)
-        u = torch.Tensor(u)
 
     # Invert CDF
     u = u.contiguous()
