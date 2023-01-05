@@ -191,30 +191,29 @@ def batchify(fn, chunk):
 
 
 # Run NeRF model over input points
-def run_network(inputs, viewdirs, fn, embed_fn, embeddirs_fn, netchunk=1024 * 64):
-    """
+def run_network(pts, viewdirs, fn, embed_fn, embeddirs_fn, netchunk=1024 * 64):
+    """Take points as input and go through 0. Flatten 1. positional embedding 2. NeRF
     S: sampling points.
-    inputs: [B, S, C] -> flatten: [B * S, C] -> poem: [B * S, C'] -> nerf: [B * S, C''] -> resize: [B, S, C'']
-    Flatten and positionally encode inputs and then apply network 'fn' to them
-
-    :param inputs: Points in 3D space. [Batches(B), Width * Height(W*H), Sampling_Num(S), Coordinates_Dim(C)]
-    :param viewdirs: view directions. ?
-    :param fn: NeRF's MLP
-    :param embed_fn: Coordinate Embedding Function
-    :param embeddirs_fn: View Direction Embedding Function
-    :param netchunk: Number of Processing Data at One Time
+    data shape: [B, S, C] -> flatten: [B * S, C] -> poem: [B * S, C'] -> nerf: [B * S, C''] -> resize: [B, S, C'']
+    
+    inputs: 
+    viewdirs: view directions. ?
+    fn: NeRF's MLP
+    embed_fn: Coordinate Embedding Function
+    embeddirs_fn: View Direction Embedding Function
+    netchunk: Number of Processing Data at One Time
 
     :return:
     """
     # Flatten the input tensor from [B, S, C] to [B * S, C]
-    inputs_flat = torch.reshape(inputs, [-1, inputs.shape[-1]])
+    pts_flat = torch.reshape(pts, [-1, pts.shape[-1]])
 
     # Positional Embedding. Shape [B * S, C] to [B * S, C']
-    embedded = embed_fn(inputs_flat)
+    embedded = embed_fn(pts_flat)
 
     # Include view directions if available
     if viewdirs is not None:
-        input_dirs = viewdirs[:, None].expand(inputs.shape)
+        input_dirs = viewdirs[:, None].expand(pts.shape)
         input_dirs_flat = torch.reshape(input_dirs, [-1, input_dirs.shape[-1]])
         embedded_dirs = embeddirs_fn(input_dirs_flat)
         embedded = torch.cat([embedded, embedded_dirs], -1)
@@ -223,7 +222,7 @@ def run_network(inputs, viewdirs, fn, embed_fn, embeddirs_fn, netchunk=1024 * 64
     outputs_flat = batchify(fn, netchunk)(embedded)
 
     # Reverse the shape from [B * S, C''] to [B, S, C'']
-    outputs = torch.reshape(outputs_flat, list(inputs.shape[:-1]) + [outputs_flat.shape[-1]])
+    outputs = torch.reshape(outputs_flat, list(pts.shape[:-1]) + [outputs_flat.shape[-1]])
     return outputs
 
 
@@ -256,7 +255,7 @@ def create_nerf(args):
         grad_vars += list(model_fine.parameters())
 
     # Create positional embedding -> NeRF function
-    network_query_fn = lambda inputs, viewdirs, network_fn: run_network(inputs, viewdirs, network_fn,
+    network_query_fn = lambda pts, viewdirs, network_fn: run_network(pts, viewdirs, network_fn,
                                                                         embed_fn=embed_fn,
                                                                         embeddirs_fn=embeddirs_fn,
                                                                         netchunk=args.netchunk)
