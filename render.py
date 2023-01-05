@@ -151,6 +151,8 @@ def render_rays(ray_batch, network_fn, network_query_fn, N_pts_coarse,
 
 def batchify(rays_flat, chunk=1024 * 32, **kwargs):
     """Render rays in smaller minibatches to avoid OOM.
+    Note: chunk is larger than N_rand(number of ray batches), so it has no effect
+    at training step. However, it helps when comes to render a full image(512x512)
     """
     all_ret = {}
     for i in range(0, rays_flat.shape[0], chunk):
