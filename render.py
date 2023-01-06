@@ -16,17 +16,24 @@ def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0, white_bkgd=False):
     """
     raw2alpha = lambda raw, dists, act_fn=nn.functional.relu: 1. - torch.exp(-act_fn(raw) * dists)
 
+    # get intervals between samples
     dists = z_vals[..., 1:] - z_vals[..., :-1]
-    dists = torch.cat([dists, torch.Tensor([1e10]).expand(dists[..., :1].shape)], -1)  # [N_rays, N_pts_coarse]
+    dists = torch.cat([dists, torch.Tensor([1e10]).expand(dists[..., :1].shape)], -1)  # [N_rays, N_pts_x]
 
-    dists = dists * torch.linalg.norm(rays_d[..., None, :], dim=-1)
+    # Multiply each distance by the norm of its corresponding direction ray 
+    # to convert to real world distance (accounts for non-unit directions).
+    # refer to: https://github.com/bmild/nerf/issues/113
+    dists = dists * torch.linalg.norm(rays_d[..., None, :], dim=-1)  # [N_rays, N_pts_x]
 
-    rgb = torch.sigmoid(raw[..., :3])  # [N_rays, N_pts_coarse, 3]
+    rgb = torch.sigmoid(raw[..., :3])  # [N_rays, N_pts_x, 3]
+
+    # Add noise to model's predictions for density. Can be used to 
+    # regularize network during training (prevents floater artifacts).
     noise = 0.
     if raw_noise_std > 0.:
         noise = torch.randn(raw[..., 3].shape) * raw_noise_std
 
-    alpha = raw2alpha(raw[..., 3] + noise, dists)  # [N_rays, N_pts_coarse]
+    alpha = raw2alpha(raw[..., 3] + noise, dists)  # [N_rays, N_pts_x]
     weights = alpha * torch.cumprod(torch.cat([torch.ones((alpha.shape[0], 1)), 1. - alpha + 1e-10], -1), -1)[:, :-1]
     rgb_map = torch.sum(weights[..., None] * rgb, -2)  # [N_rays, 3]
 
