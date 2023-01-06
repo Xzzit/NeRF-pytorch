@@ -34,7 +34,7 @@ def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0, white_bkgd=False):
         noise = torch.randn(raw[..., 3].shape) * raw_noise_std
 
     alpha = raw2alpha(raw[..., 3] + noise, dists)  # [N_rays, N_pts_x]
-    weights = alpha * torch.cumprod(torch.cat([torch.ones((alpha.shape[0], 1)), 1. - alpha + 1e-10], -1), -1)[:, :-1]
+    weights = alpha * torch.cumprod(torch.cat([torch.ones((alpha.shape[0], 1)), 1. - alpha + 1e-10], -1), -1)[:, :-1]  # [N_rays, N_pts_x]
     rgb_map = torch.sum(weights[..., None] * rgb, -2)  # [N_rays, 3]
 
     depth_map = torch.sum(weights * z_vals, -1)
