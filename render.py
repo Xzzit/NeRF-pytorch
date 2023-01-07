@@ -117,7 +117,7 @@ def render_rays(ray_batch, network_query_fn,
 
     # Coarse to fine strategy
     if N_pts_fine > 0:
-        rgb_map_0, disp_map_0, acc_map_0 = rgb_map, disp_map, acc_map
+        rgb_map_coarse, disp_map_coarse, acc_map_coarse = rgb_map, disp_map, acc_map
 
         z_vals_mid = .5 * (z_vals[..., 1:] + z_vals[..., :-1])
         z_samples = sample_pdf(z_vals_mid, weights[..., 1:-1], N_pts_fine, det=(perturb == 0.))
@@ -137,9 +137,9 @@ def render_rays(ray_batch, network_query_fn,
     if retraw:
         ret['raw'] = raw
     if N_pts_fine > 0:
-        ret['rgb_coarse'] = rgb_map_0
-        ret['disp_coarse'] = disp_map_0
-        ret['acc_coarse'] = acc_map_0
+        ret['rgb_coarse'] = rgb_map_coarse
+        ret['disp_coarse'] = disp_map_coarse
+        ret['acc_coarse'] = acc_map_coarse
         ret['z_std'] = torch.std(z_samples, dim=-1, unbiased=False)  # [B]
 
     for k in ret:
