@@ -77,9 +77,9 @@ def render_rays(ray_batch, network_query_fn,
     disp_map: [num_rays]. Disparity map. 1 / depth.
     acc_map: [num_rays]. Accumulated opacity along each ray. Comes from fine model.
     raw: [num_rays, num_samples, 4]. Raw predictions from model.
-    rgb0: See rgb_map. Output for coarse model.
-    disp0: See disp_map. Output for coarse model.
-    acc0: See acc_map. Output for coarse model.
+    rgb_coarse: See rgb_map. Output for coarse model.
+    disp_coarse: See disp_map. Output for coarse model.
+    acc_coarse: See acc_map. Output for coarse model.
     z_std: [num_rays]. Standard deviation of distances along ray for each sample.
     """
 
@@ -137,9 +137,9 @@ def render_rays(ray_batch, network_query_fn,
     if retraw:
         ret['raw'] = raw
     if N_pts_fine > 0:
-        ret['rgb0'] = rgb_map_0
-        ret['disp0'] = disp_map_0
-        ret['acc0'] = acc_map_0
+        ret['rgb_coarse'] = rgb_map_0
+        ret['disp_coarse'] = disp_map_0
+        ret['acc_coarse'] = acc_map_0
         ret['z_std'] = torch.std(z_samples, dim=-1, unbiased=False)  # [B]
 
     for k in ret:

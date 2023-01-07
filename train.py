@@ -405,8 +405,8 @@ def train():
         loss = img_loss
         psnr = mse2psnr(img_loss)
 
-        if 'rgb0' in extras:
-            img_loss0 = img2mse(extras['rgb0'], target_s)
+        if 'rgb_coarse' in extras:
+            img_loss0 = img2mse(extras['rgb_coarse'], target_s)
             loss = loss + img_loss0
             psnr0 = mse2psnr(img_loss0)
 
