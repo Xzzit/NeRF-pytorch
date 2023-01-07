@@ -237,7 +237,7 @@ def create_nerf(args):
     if args.use_viewdirs:
         embeddirs_fn, input_ch_views = get_embedder(args.multires_views, args.i_embed)
 
-    output_ch = 4
+    output_ch = 4  # rgb + sigma
     skips = [4]
 
     # Initialize coarse NeRF model
