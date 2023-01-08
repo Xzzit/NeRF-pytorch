@@ -96,6 +96,7 @@ def render_rays(ray_batch, network_query_fn,
     else:
         z_vals = 1. / (1. / near * (1. - t_vals) + 1. / far * (t_vals))
 
+    # Perturb sampling time along each ray.
     if perturb > 0.:
         # get intervals between samples
         mids = .5 * (z_vals[..., 1:] + z_vals[..., :-1])
@@ -123,7 +124,7 @@ def render_rays(ray_batch, network_query_fn,
         z_samples = sample_pdf(z_vals_mid, weights[..., 1:-1], N_pts_fine, det=(perturb == 0.))
         z_samples = z_samples.detach()
 
-        z_vals, _ = torch.sort(torch.cat([z_vals, z_samples], -1), -1)
+        z_vals, _ = torch.sort(torch.cat([z_vals, z_samples], -1), -1)  # [B, N_pts_coarse + N_pts_fine, 3]
         pts = rays_o[..., None, :] + rays_d[..., None, :] * z_vals[..., :,
                                                             None]  # [B, N_pts_coarse + N_pts_fine, 3]
 
