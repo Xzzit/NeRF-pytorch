@@ -87,34 +87,42 @@ def ndc_rays(H, W, focal, near, rays_o, rays_d):
 
 
 # Hierarchical sampling (section 5.2)
-def sample_pdf(bins, weights, N_pts_coarse, det=False):
+def sample_pdf(bins, weights, N_pts_fine, det=False):
     # Get pdf
-    weights = weights + 1e-5  # prevent nans
-    pdf = weights / torch.sum(weights, -1, keepdim=True)
+    weights = weights + 1e-5  # prevent nans [N_rays, N_pts_coarse - 2]
+
+    # Calculate Probability Density values (divide by sum to make sure that the sum is equal to 1)
+    pdf = weights / torch.sum(weights, -1, keepdim=True)  # [N_rays, N_pts_coarse - 2]
+
+    # Calculate Cumulative Distribution values
     cdf = torch.cumsum(pdf, -1)
-    cdf = torch.cat([torch.zeros_like(cdf[..., :1]), cdf], -1)  # (batch, len(bins))
+    cdf = torch.cat([torch.zeros_like(cdf[..., :1]), cdf], -1)  # (N_rays, N_pts_coarse - 1)
 
     # Take uniform samples
-    if det:
-        u = torch.linspace(0., 1., steps=N_pts_coarse)
-        u = u.expand(list(cdf.shape[:-1]) + [N_pts_coarse])
+    if det:  # if perturb == 0. (no perturb)
+        u = torch.linspace(0., 1., steps=N_pts_fine)
+        u = u.expand(list(cdf.shape[:-1]) + [N_pts_fine])
     else:
-        u = torch.rand(list(cdf.shape[:-1]) + [N_pts_coarse])
+        u = torch.rand(list(cdf.shape[:-1]) + [N_pts_fine])
 
     # Invert CDF
-    u = u.contiguous()
-    inds = torch.searchsorted(cdf, u, right=True)
-    below = torch.max(torch.zeros_like(inds - 1), inds - 1)
-    above = torch.min((cdf.shape[-1] - 1) * torch.ones_like(inds), inds)
-    inds_g = torch.stack([below, above], -1)  # (batch, N_pts_coarse, 2)
+    u = u.contiguous()  # (N_rays, N_pts_fine)  refer to: https://stackoverflow.com/questions/48915810/
 
-    matched_shape = [inds_g.shape[0], inds_g.shape[1], cdf.shape[-1]]
+    # Move uniform or linspace points to closest cdf points
+    inds = torch.searchsorted(cdf, u, right=True)  # (N_rays, N_pts_fine)
+
+    # Clip index to ensure 0 <= indx <= N_pts_coarse
+    below = torch.max(torch.zeros_like(inds), inds - 1)  # (N_rays, N_pts_fine)
+    above = torch.min((cdf.shape[-1] - 1) * torch.ones_like(inds), inds)  # (N_rays, N_pts_fine)
+    inds_g = torch.stack([below, above], -1)  # (N_rays, N_pts_fine, 2)
+
+    matched_shape = [inds_g.shape[0], inds_g.shape[1], cdf.shape[-1]]  # [N_rays, N_pts_fine, N_pts_coarse - 1]
     cdf_g = torch.gather(cdf.unsqueeze(1).expand(matched_shape), 2, inds_g)
     bins_g = torch.gather(bins.unsqueeze(1).expand(matched_shape), 2, inds_g)
 
     denom = (cdf_g[..., 1] - cdf_g[..., 0])
     denom = torch.where(denom < 1e-5, torch.ones_like(denom), denom)
     t = (u - cdf_g[..., 0]) / denom
-    samples = bins_g[..., 0] + t * (bins_g[..., 1] - bins_g[..., 0])
+    samples = bins_g[..., 0] + t * (bins_g[..., 1] - bins_g[..., 0])  # [N_rays, N_pts_fine]
 
     return samples
