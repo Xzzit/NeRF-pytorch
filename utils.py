@@ -87,7 +87,7 @@ def ndc_rays(H, W, focal, near, rays_o, rays_d):
 
 
 # Hierarchical sampling (section 5.2)
-def sample_pdf(bins, weights, N_pts_fine, det=False):
+def sample_pdf(z_vals_mid, weights, N_pts_fine, det=False):
     # Get pdf
     weights = weights + 1e-5  # prevent nans [N_rays, N_pts_coarse - 2]
 
@@ -108,21 +108,27 @@ def sample_pdf(bins, weights, N_pts_fine, det=False):
     # Invert CDF
     u = u.contiguous()  # (N_rays, N_pts_fine)  refer to: https://stackoverflow.com/questions/48915810/
 
-    # Move uniform or linspace points to closest cdf points
+    # Move uniform or linspace points to closest cdf points (value -> index)
+    # Hierarchical volume sampling but try to sample N_pts_fine points from N_pts_coarse-1 points, 
+    # which will cause repeatingly sampling at same points.
     inds = torch.searchsorted(cdf, u, right=True)  # (N_rays, N_pts_fine)
 
-    # Clip index to ensure 0 <= indx <= N_pts_coarse
+    # Clip index to ensure 0 <= indx <= N_pts_coarse (below + 1 = above)
     below = torch.max(torch.zeros_like(inds), inds - 1)  # (N_rays, N_pts_fine)
     above = torch.min((cdf.shape[-1] - 1) * torch.ones_like(inds), inds)  # (N_rays, N_pts_fine)
     inds_g = torch.stack([below, above], -1)  # (N_rays, N_pts_fine, 2)
 
     matched_shape = [inds_g.shape[0], inds_g.shape[1], cdf.shape[-1]]  # [N_rays, N_pts_fine, N_pts_coarse - 1]
-    cdf_g = torch.gather(cdf.unsqueeze(1).expand(matched_shape), 2, inds_g)
-    bins_g = torch.gather(bins.unsqueeze(1).expand(matched_shape), 2, inds_g)
+
+    # Compute cumulated density values at points 'below' and 'above' (index -> value)
+    cdf_g = torch.gather(cdf.unsqueeze(1).expand(matched_shape), 2, inds_g)  # [N_rays, N_pts_fine, 2]
+
+    # Compute middle sampling points of z_vals_mid at points 'below' and 'above' (index -> value)
+    bins_g = torch.gather(z_vals_mid.unsqueeze(1).expand(matched_shape), 2, inds_g)  # [N_rays, N_pts_fine, 2]
 
     denom = (cdf_g[..., 1] - cdf_g[..., 0])
     denom = torch.where(denom < 1e-5, torch.ones_like(denom), denom)
-    t = (u - cdf_g[..., 0]) / denom
+    t = (u - cdf_g[..., 0]) / denom  # [N_rays, N_pts_fine]
     samples = bins_g[..., 0] + t * (bins_g[..., 1] - bins_g[..., 0])  # [N_rays, N_pts_fine]
 
     return samples
