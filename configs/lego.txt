@@ -12,7 +12,7 @@ lrate_decay = 500
 N_pts_coarse = 64
 N_pts_fine = 128
 N_rand = 1024
-N_iters = 200
+N_iters = 1000
 
 precrop_iters = 500
 precrop_frac = 0.5
