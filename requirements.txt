@@ -1,0 +1,7 @@
+imageio >= 2.22
+tqdm >= 4.64
+configargparse >= 1.5
+torch >= 1.10.0
+opencv-python >= 4.5
+imageio-ffmpeg >= 0.4
+av >= 9.0
